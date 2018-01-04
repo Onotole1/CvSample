@@ -1,5 +1,6 @@
 import components.Corner;
 import components.ImageUtils;
+import components.PreferencesProvider;
 import components.Rule;
 import org.opencv.calib3d.StereoBM;
 import org.opencv.calib3d.StereoSGBM;
@@ -10,7 +11,11 @@ import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
 
 import javax.swing.*;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.FileInputStream;
@@ -40,6 +45,23 @@ public class Main extends JFrame {
     private JPanel panel3;
     private JPanel panel5;
     private JComboBox comboBox1;
+    private JSpinner numDisparitiesSpinner;
+    private JSpinner blockSizeSpinner;
+    private JSpinner windowSizeSpinner;
+    private JSpinner minDispSpinner;
+    private JSpinner disp12MaxDiffSpinner;
+    private JSpinner preFilterCapSpinner;
+    private JSpinner uniquenessRatioSpinner;
+    private JSpinner speckleWindowSizeSpinner;
+    private JSpinner speckleRangeSpinner;
+    private JButton setDefaultsButton;
+    private JLabel windowSizeLabel;
+    private JLabel minDispLabel;
+    private JLabel disp12MaxDiffLabel;
+    private JLabel preFilterCapLabel;
+    private JLabel uniquenessRatioLabel;
+    private JLabel speckleWindowSizeLabel;
+    private JLabel speckleRangeLabel;
     private double maxValue = Double.MIN_VALUE;
 
     private final Mat img1 = new Mat();
@@ -65,6 +87,8 @@ public class Main extends JFrame {
 
     private final AtomicBoolean isDepthRun = new AtomicBoolean();
 
+    private PreferencesProvider preferencesProvider = new PreferencesProvider();
+
     static {
         String opencvpath = System.getProperty("user.dir") + "\\libs\\";
         System.load(opencvpath + Core.NATIVE_LIBRARY_NAME + ".dll");
@@ -85,6 +109,7 @@ public class Main extends JFrame {
     private Main() {
 
         $$$setupUI$$$();
+        initViews();
         setContentPane(panel1);
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         pack();
@@ -132,23 +157,23 @@ public class Main extends JFrame {
                     final Mat disparity = new Mat();
 
                     if (comboBox1.getSelectedIndex() == 0) {
-                        final StereoBM stereoSGBM = StereoBM.create();
+                        final StereoBM stereoSGBM = StereoBM.create((Integer) numDisparitiesSpinner.getValue(), (Integer) blockSizeSpinner.getValue());
 
                         stereoSGBM.compute(imgU1, imgU2, disparity);
 
                     } else if (comboBox1.getSelectedIndex() == 1) {
 
-                        int windowSize = 3;
-                        int minDisp = 16;
-                        int numDisp = 112 - minDisp;
-                        int blockSize = 16;
+                        int windowSize = (Integer) windowSizeSpinner.getValue();
+                        int minDisp = (Integer) minDispSpinner.getValue();
+                        int numDisp = (Integer) numDisparitiesSpinner.getValue();
+                        int blockSize = (Integer) blockSizeSpinner.getValue();
                         int P1 = (int) Math.pow(8 * 3 * windowSize, 2);
                         int P2 = (int) Math.pow(32 * 3 * windowSize, 2);
-                        int disp12MaxDiff = 1;
-                        int preFilterCap = 0;
-                        int uniquenessRatio = 10;
-                        int speckleWindowSize = 100;
-                        int speckleRange = 32;
+                        int disp12MaxDiff = (Integer) disp12MaxDiffSpinner.getValue();
+                        int preFilterCap = (Integer) preFilterCapSpinner.getValue();
+                        int uniquenessRatio = (Integer) uniquenessRatioSpinner.getValue();
+                        int speckleWindowSize = (Integer) speckleWindowSizeSpinner.getValue();
+                        int speckleRange = (Integer) speckleRangeSpinner.getValue();
 
                         final StereoSGBM stereoSGBM = StereoSGBM.create(minDisp, numDisp, blockSize, P1, P2, disp12MaxDiff, preFilterCap, uniquenessRatio, speckleWindowSize, speckleRange, StereoSGBM.MODE_HH);
 
@@ -261,6 +286,118 @@ public class Main extends JFrame {
                 new Corner());
         scrollPane1.setCorner(JScrollPane.UPPER_RIGHT_CORNER,
                 new Corner());
+    }
+
+    private void initViews() {
+        numDisparitiesSpinner.setModel(new SpinnerNumberModel(preferencesProvider.getNumDisparities(), 16, Integer.MAX_VALUE, 16));
+        numDisparitiesSpinner.addChangeListener(e -> {
+                    if ((Integer) numDisparitiesSpinner.getValue() % 16 == 0) {
+                        preferencesProvider.saveNumDisparities((Integer) numDisparitiesSpinner.getValue());
+                    } else {
+                        numDisparitiesSpinner.setValue(numDisparitiesSpinner.getPreviousValue());
+                    }
+                }
+        );
+
+        blockSizeSpinner.setModel(new SpinnerNumberModel(preferencesProvider.getBlockSize(), 5, 255, 2));
+        blockSizeSpinner.addChangeListener(e -> preferencesProvider.saveBlockSize((Integer) blockSizeSpinner.getValue()));
+
+        speckleRangeSpinner.setModel(new SpinnerNumberModel(preferencesProvider.getSpeckleRange(), 1, Integer.MAX_VALUE, 1));
+        speckleRangeSpinner.addChangeListener(e -> preferencesProvider.saveSpeckleRange((Integer) speckleRangeSpinner.getValue()));
+
+        speckleWindowSizeSpinner.setModel(new SpinnerNumberModel(preferencesProvider.getSpeckleWindowSize(), 1, Integer.MAX_VALUE, 1));
+        speckleWindowSizeSpinner.addChangeListener(e -> preferencesProvider.saveSpeckleWindowSize((Integer) speckleWindowSizeSpinner.getValue()));
+
+        preFilterCapSpinner.setModel(new SpinnerNumberModel(preferencesProvider.getPreFiltered(), 0, Integer.MAX_VALUE, 1));
+        preFilterCapSpinner.addChangeListener(e -> preferencesProvider.savePreFiltered((Integer) preFilterCapSpinner.getValue()));
+
+        disp12MaxDiffSpinner.setModel(new SpinnerNumberModel(preferencesProvider.getDisp12MaxDisp(), 1, Integer.MAX_VALUE, 1));
+        disp12MaxDiffSpinner.addChangeListener(e -> preferencesProvider.saveDisp12MaxDisp((Integer) disp12MaxDiffSpinner.getValue()));
+
+        windowSizeSpinner.setModel(new SpinnerNumberModel(preferencesProvider.getWindowSize(), 1, Integer.MAX_VALUE, 1));
+        windowSizeSpinner.addChangeListener(e -> preferencesProvider.saveWindowSize((Integer) windowSizeSpinner.getValue()));
+
+        minDispSpinner.setModel(new SpinnerNumberModel(preferencesProvider.getMinDisparities(), 1, Integer.MAX_VALUE, 1));
+        minDispSpinner.addChangeListener(e -> preferencesProvider.saveMinDisparities((Integer) minDispSpinner.getValue()));
+
+        uniquenessRatioSpinner.setModel(new SpinnerNumberModel(preferencesProvider.getUniquenessRatio(), 1, Integer.MAX_VALUE, 1));
+        uniquenessRatioSpinner.addChangeListener(e -> preferencesProvider.saveUniquenessRatio((Integer) uniquenessRatioSpinner.getValue()));
+
+        setDefaultsButton.addActionListener(e -> {
+            preferencesProvider.setDefaults();
+
+            numDisparitiesSpinner.setValue(preferencesProvider.getNumDisparities());
+            blockSizeSpinner.setValue(preferencesProvider.getBlockSize());
+            speckleRangeSpinner.setValue(preferencesProvider.getSpeckleRange());
+            speckleWindowSizeSpinner.setValue(preferencesProvider.getWindowSize());
+            preFilterCapSpinner.setValue(preferencesProvider.getPreFiltered());
+            disp12MaxDiffSpinner.setValue(preferencesProvider.getDisp12MaxDisp());
+            windowSizeSpinner.setValue(preferencesProvider.getWindowSize());
+            minDispSpinner.setValue(preferencesProvider.getMinDisparities());
+            uniquenessRatioSpinner.setValue(preferencesProvider.getUniquenessRatio());
+        });
+
+        comboBox1.addActionListener(e -> {
+
+            int selectedIndex = comboBox1.getSelectedIndex();
+
+            if (selectedIndex == 0) {
+                windowSizeSpinner.setVisible(false);
+                minDispSpinner.setVisible(false);
+                disp12MaxDiffSpinner.setVisible(false);
+                preFilterCapSpinner.setVisible(false);
+                uniquenessRatioSpinner.setVisible(false);
+                speckleWindowSizeSpinner.setVisible(false);
+                speckleRangeSpinner.setVisible(false);
+
+                disp12MaxDiffLabel.setVisible(false);
+                minDispLabel.setVisible(false);
+                preFilterCapLabel.setVisible(false);
+                speckleRangeLabel.setVisible(false);
+                uniquenessRatioLabel.setVisible(false);
+                windowSizeLabel.setVisible(false);
+                speckleWindowSizeLabel.setVisible(false);
+
+                int preferencesProviderBlockSize = preferencesProvider.getBlockSize();
+
+                if (preferencesProviderBlockSize % 2 == 0 || preferencesProviderBlockSize < 5 || preferencesProviderBlockSize > 255) {
+
+                    if (preferencesProviderBlockSize < 5) {
+                        preferencesProvider.saveBlockSize(5);
+                    } else if (preferencesProviderBlockSize > 255) {
+                        preferencesProvider.saveBlockSize(255);
+                    } else {
+                        int newValue = preferencesProviderBlockSize - 1;
+
+                        if (newValue < 5) {
+                            newValue += 2;
+                        }
+                        preferencesProvider.saveBlockSize(newValue);
+                    }
+                }
+
+                blockSizeSpinner.setModel(new SpinnerNumberModel(preferencesProvider.getBlockSize(), 5, 255, 2));
+
+            } else if (selectedIndex == 1) {
+                windowSizeSpinner.setVisible(true);
+                minDispSpinner.setVisible(true);
+                disp12MaxDiffSpinner.setVisible(true);
+                preFilterCapSpinner.setVisible(true);
+                uniquenessRatioSpinner.setVisible(true);
+                speckleWindowSizeSpinner.setVisible(true);
+                speckleRangeSpinner.setVisible(true);
+
+                disp12MaxDiffLabel.setVisible(true);
+                minDispLabel.setVisible(true);
+                preFilterCapLabel.setVisible(true);
+                speckleRangeLabel.setVisible(true);
+                uniquenessRatioLabel.setVisible(true);
+                windowSizeLabel.setVisible(true);
+                speckleWindowSizeLabel.setVisible(true);
+
+                blockSizeSpinner.setModel(new SpinnerNumberModel(preferencesProvider.getBlockSize(), 1, Integer.MAX_VALUE, 1));
+            }
+        });
     }
 
     /**
