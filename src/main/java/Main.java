@@ -1,19 +1,20 @@
 import components.Corner;
 import components.ImageUtils;
 import components.Rule;
-import org.opencv.calib3d.Calib3d;
 import org.opencv.calib3d.StereoBM;
-import org.opencv.calib3d.StereoSGBM;
-import org.opencv.core.*;
-import org.opencv.highgui.Highgui;
-import org.opencv.imgcodecs.Imgcodecs;
+import org.opencv.core.Core;
+import org.opencv.core.CvType;
+import org.opencv.core.Mat;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowEvent;
-import java.io.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Main extends JFrame {
@@ -63,7 +64,8 @@ public class Main extends JFrame {
     private final AtomicBoolean isDepthRun = new AtomicBoolean();
 
     static {
-        System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
+        String opencvpath = System.getProperty("user.dir") + "\\libs\\";
+        System.load(opencvpath + Core.NATIVE_LIBRARY_NAME + ".dll");
     }
 
     @Override
