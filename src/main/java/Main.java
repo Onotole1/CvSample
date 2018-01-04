@@ -2,6 +2,7 @@ import components.Corner;
 import components.ImageUtils;
 import components.Rule;
 import org.opencv.calib3d.StereoBM;
+import org.opencv.calib3d.StereoSGBM;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
@@ -38,6 +39,7 @@ public class Main extends JFrame {
     private JScrollBar scrollBar3;
     private JPanel panel3;
     private JPanel panel5;
+    private JComboBox comboBox1;
     private double maxValue = Double.MIN_VALUE;
 
     private final Mat img1 = new Mat();
@@ -82,20 +84,10 @@ public class Main extends JFrame {
 
     private Main() {
 
-        webSourceOne = new VideoCapture(0);
-        webSourceTwo = new VideoCapture(1);
-
         $$$setupUI$$$();
         setContentPane(panel1);
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         pack();
-
-        if (!loadCalibration()) {
-            final Calib calib = new Calib();
-
-            EventQueue.invokeLater(() ->
-                    calib.setVisible(true));
-        }
 
         startDMButton.addActionListener(e -> {
 
@@ -105,10 +97,12 @@ public class Main extends JFrame {
                 return;
             }
 
-            webSourceOne.open(0);
-            webSourceTwo.open(1);
+            webSourceOne = new VideoCapture(0);
+            webSourceTwo = new VideoCapture(1);
 
             webSourceOne.read(img1);
+
+            Core.flip(img1, img1, -1);
 
             webSourceTwo.read(img2);
 
@@ -120,6 +114,8 @@ public class Main extends JFrame {
                 while (isDepthRun.get()) {
 
                     webSourceOne.read(img1);
+
+                    Core.flip(img1, img1, -1);
 
                     webSourceTwo.read(img2);
 
@@ -133,11 +129,31 @@ public class Main extends JFrame {
 
                     ImageUtils.draw(panel3, imgU2);
 
-                    final StereoBM stereoSGBM = StereoBM.create();
-
                     final Mat disparity = new Mat();
 
-                    stereoSGBM.compute(imgU1, imgU2, disparity);
+                    if (comboBox1.getSelectedIndex() == 0) {
+                        final StereoBM stereoSGBM = StereoBM.create();
+
+                        stereoSGBM.compute(imgU1, imgU2, disparity);
+
+                    } else if (comboBox1.getSelectedIndex() == 1) {
+
+                        int windowSize = 3;
+                        int minDisp = 16;
+                        int numDisp = 112 - minDisp;
+                        int blockSize = 16;
+                        int P1 = (int) Math.pow(8 * 3 * windowSize, 2);
+                        int P2 = (int) Math.pow(32 * 3 * windowSize, 2);
+                        int disp12MaxDiff = 1;
+                        int preFilterCap = 0;
+                        int uniquenessRatio = 10;
+                        int speckleWindowSize = 100;
+                        int speckleRange = 32;
+
+                        final StereoSGBM stereoSGBM = StereoSGBM.create(minDisp, numDisp, blockSize, P1, P2, disp12MaxDiff, preFilterCap, uniquenessRatio, speckleWindowSize, speckleRange, StereoSGBM.MODE_HH);
+
+                        stereoSGBM.compute(imgU1, imgU2, disparity);
+                    }
 
                     final Mat normalized = new Mat();
 
@@ -216,6 +232,7 @@ public class Main extends JFrame {
         panel2 = new JPanel();
         panel3 = new JPanel();
         panel5 = new JPanel();
+        comboBox1 = new JComboBox();
 
         final Rule columnView = new Rule(Rule.HORIZONTAL, true);
 
@@ -253,16 +270,24 @@ public class Main extends JFrame {
 
         final Main main = new Main();
 
-        try {
-            EventQueue.invokeLater(() ->
-                    main.setVisible(true));
-        } finally {
-            if (null != main.webSourceOne && main.webSourceOne.isOpened()) {
-                main.webSourceOne.release();
-            }
+        if (!main.loadCalibration()) {
+            final Calib calib = new Calib();
 
-            if (null != main.webSourceTwo && main.webSourceTwo.isOpened()) {
-                main.webSourceTwo.release();
+            EventQueue.invokeLater(() ->
+                    calib.setVisible(true));
+        } else {
+
+            try {
+                EventQueue.invokeLater(() ->
+                        main.setVisible(true));
+            } finally {
+                if (null != main.webSourceOne && main.webSourceOne.isOpened()) {
+                    main.webSourceOne.release();
+                }
+
+                if (null != main.webSourceTwo && main.webSourceTwo.isOpened()) {
+                    main.webSourceTwo.release();
+                }
             }
         }
     }

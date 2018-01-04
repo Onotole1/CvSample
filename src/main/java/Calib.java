@@ -59,6 +59,18 @@ public class Calib extends JFrame {
 
     private final AtomicBoolean isCalibrationRun = new AtomicBoolean();
 
+    @Override
+    protected void processWindowEvent(final WindowEvent e) {
+
+
+        if (e.getID() == WindowEvent.WINDOW_CLOSING) {
+            webSourceOne.release();
+            webSourceTwo.release();
+        }
+
+        super.processWindowEvent(e);
+    }
+
     public Calib() {
 
         setContentPane(panel3);
@@ -67,9 +79,15 @@ public class Calib extends JFrame {
 
         final Runnable depthRunnable = () -> {
 
+            webSourceOne = new VideoCapture(0);
+
+            webSourceTwo = new VideoCapture(1);
+
             while (isCalibrationRun.get()) {
 
                 webSourceOne.read(img1);
+
+                Core.flip(img1, img1, -1);
 
                 webSourceTwo.read(img2);
 
@@ -126,11 +144,6 @@ public class Calib extends JFrame {
             webSourceTwo.release();
         };
 
-
-        webSourceOne = new VideoCapture(0);
-
-        webSourceTwo = new VideoCapture(1);
-
         final Thread thread = new Thread(depthRunnable);
 
         isCalibrationRun.set(true);
@@ -164,6 +177,9 @@ public class Calib extends JFrame {
         finishButton = new JButton();
         finishButton.addActionListener(e -> {
             if (imagePoints1.size() > 0) {
+
+                isCalibrationRun.set(false);
+
                 calibrate();
                 try {
                     saveCalibration();
