@@ -11,13 +11,10 @@ import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.imgproc.Imgproc;
-import org.opencv.videoio.VideoCapture;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowEvent;
-import java.awt.image.BufferedImage;
-import java.awt.image.DataBufferByte;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -29,9 +26,9 @@ public class Main extends JFrame {
     private static final double FOCUS_LENGTH_PX = 113.3858267717d;
     private static final double BASE_LENGTH_PX = 377.9527559055d;
 
-    private VideoCapture webSourceTwo;
+//    private VideoCapture webSourceTwo;
     private DSCapture cam1graph;
-
+    private DSCapture cam2graph;
 
     private JPanel panel1;
     private JButton startDMButton;
@@ -62,10 +59,11 @@ public class Main extends JFrame {
     private JLabel uniquenessRatioLabel;
     private JLabel speckleWindowSizeLabel;
     private JLabel speckleRangeLabel;
+    private JList list1;
     private double maxValue = Double.MIN_VALUE;
 
     private Mat img1;
-    private final Mat img2 = new Mat();
+    private Mat img2;
 
     private final Mat imgU1 = new Mat();
     private final Mat imgU2 = new Mat();
@@ -100,33 +98,16 @@ public class Main extends JFrame {
 
         if (e.getID() == WindowEvent.WINDOW_CLOSING) {
 //            webSourceOne.release();
-            webSourceTwo.release();
+//            webSourceTwo.release();
             cam1graph.stop();
+            cam2graph.stop();
         }
+
 
         super.processWindowEvent(e);
     }
 
-    private Main() {
-
-        DSFilterInfo easyCap1 = null;
-
-        DSFilterInfo[][] info = DSCapture.queryDevices();
-        for (int i = 0; i < info.length; i++) {
-            for (int j = 0; j < info[i].length; j++) {
-                System.out.println("[" + i + "][" + j + "]" + info[i][j]);
-                if(info[i][j].getName().equals("OEM Device")) {
-                    easyCap1 = info[i][j];
-                }
-            }
-        }
-
-        cam1graph = new DSCapture(DSFiltergraph.CAPTURE, easyCap1,
-                false, DSFilterInfo.doNotRender(), null);
-
-
-        cam1graph.setVisible(true);
-        cam1graph.setPreview();
+    Main() {
 
         $$$setupUI$$$();
         initViews();
@@ -142,17 +123,45 @@ public class Main extends JFrame {
                 return;
             }
 
-            webSourceTwo = new VideoCapture(1);
+            DSFilterInfo easyCap1 = null;
+            DSFilterInfo easyCap2 = null;
+
+            DSFilterInfo[][] info = DSCapture.queryDevices();
+            for (int i = 0; i < info.length; i++) {
+                for (int j = 0; j < info[i].length; j++) {
+                    System.out.println("[" + i + "][" + j + "]" + info[i][j]);
+                    if(info[i][j].getName().equals("OEM Device")) {
+                        easyCap1 = info[i][j];
+                    }
+                    if (info[i][j].getName().equals("USB2.0 PC CAMERA")) {
+                        easyCap2 = info[i][j];
+                    }
+                }
+            }
+
+            cam1graph = new DSCapture(DSFiltergraph.CAPTURE, easyCap1,
+                    false, DSFilterInfo.doNotRender(), null);
+
+
+            cam1graph.setVisible(true);
+            cam1graph.setPreview();
+
+            cam2graph = new DSCapture(DSFiltergraph.CAPTURE, easyCap2,
+                    false, DSFilterInfo.doNotRender(), null);
+
+
+            cam2graph.setVisible(true);
+            cam2graph.setPreview();
+
+//            webSourceTwo = new VideoCapture(0);
+//
+//            webSourceTwo.retrieve(img2);
 
             img1 = cam1graph != null ?
-                    BufferedImage2Mat(cam1graph.getImage()) : new Mat();
+                    ImageUtils.BufferedImage2Mat(cam1graph.getImage()) : new Mat();
 
-
-            webSourceTwo.read(img2);
-
-            ImageUtils.draw(panel5, img1);
-
-            ImageUtils.draw(panel3, img2);
+            img2 = cam1graph != null ?
+                    ImageUtils.BufferedImage2Mat(cam2graph.getImage()) : new Mat();
 
             Imgproc.initUndistortRectifyMap(CM1, D1, R1, P1, img1.size(), CvType.CV_32FC1, map1x, map1y);
             Imgproc.initUndistortRectifyMap(CM2, D2, R2, P2, img2.size(), CvType.CV_32FC1, map2x, map2y);
@@ -160,10 +169,12 @@ public class Main extends JFrame {
 
             final Runnable depthRunnable = () -> {
                 while (isDepthRun.get()) {
-                    img1 = cam1graph != null ?
-                            BufferedImage2Mat(cam1graph.getImage()) : new Mat();
 
-                    webSourceTwo.read(img2);
+                   img1 = cam1graph != null ?
+                            ImageUtils.BufferedImage2Mat(cam1graph.getImage()) : new Mat();
+                    img2 = cam1graph != null ?
+                            ImageUtils.BufferedImage2Mat(cam2graph.getImage()) : new Mat();
+
 
                     Imgproc.cvtColor(img1, img1, Imgproc.COLOR_BGR2GRAY);
 
@@ -240,15 +251,6 @@ public class Main extends JFrame {
         });
 
     }
-
-    private static Mat BufferedImage2Mat(BufferedImage bi) {
-        Mat mat = new Mat(bi.getHeight(), bi.getWidth(), CvType.CV_8UC3);
-        byte[] data = ((DataBufferByte) bi.getRaster().getDataBuffer()).getData();
-        mat.put(0, 0, data);
-
-        return mat;
-    }
-
 
     private void undistortAndRemap() {
         Imgproc.remap(img1, imgU1, map1x, map1y, Imgproc.INTER_LINEAR);
@@ -440,7 +442,7 @@ public class Main extends JFrame {
         if (!main.loadCalibration()) {
             final Calib calib = new Calib();
 
-            EventQueue.invokeLater(() ->
+           EventQueue.invokeLater(() ->
                     calib.setVisible(true));
         } else {
 
@@ -448,13 +450,8 @@ public class Main extends JFrame {
                 EventQueue.invokeLater(() ->
                         main.setVisible(true));
             } finally {
-//                if (null != main.webSourceOne && main.webSourceOne.isOpened()) {
-//                    main.webSourceOne.release();
-//                }
-
-                if (null != main.webSourceTwo && main.webSourceTwo.isOpened()) {
-                    main.webSourceTwo.release();
-                }
+                main.cam1graph.stop();
+                main.cam2graph.stop();
             }
         }
     }
