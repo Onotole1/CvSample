@@ -2,6 +2,9 @@ import components.Corner;
 import components.ImageUtils;
 import components.PreferencesProvider;
 import components.Rule;
+import de.humatic.dsj.DSCapture;
+import de.humatic.dsj.DSFilterInfo;
+import de.humatic.dsj.DSFiltergraph;
 import org.opencv.calib3d.StereoBM;
 import org.opencv.calib3d.StereoSGBM;
 import org.opencv.core.Core;
@@ -11,12 +14,10 @@ import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
 
 import javax.swing.*;
-import javax.swing.event.ChangeEvent;
-import javax.swing.event.ChangeListener;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.awt.event.WindowEvent;
+import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferByte;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -28,9 +29,8 @@ public class Main extends JFrame {
     private static final double FOCUS_LENGTH_PX = 113.3858267717d;
     private static final double BASE_LENGTH_PX = 377.9527559055d;
 
-
-    private VideoCapture webSourceOne;
     private VideoCapture webSourceTwo;
+    private DSCapture cam1graph;
 
 
     private JPanel panel1;
@@ -64,7 +64,7 @@ public class Main extends JFrame {
     private JLabel speckleRangeLabel;
     private double maxValue = Double.MIN_VALUE;
 
-    private final Mat img1 = new Mat();
+    private Mat img1;
     private final Mat img2 = new Mat();
 
     private final Mat imgU1 = new Mat();
@@ -99,14 +99,34 @@ public class Main extends JFrame {
 
 
         if (e.getID() == WindowEvent.WINDOW_CLOSING) {
-            webSourceOne.release();
+//            webSourceOne.release();
             webSourceTwo.release();
+            cam1graph.stop();
         }
 
         super.processWindowEvent(e);
     }
 
     private Main() {
+
+        DSFilterInfo easyCap1 = null;
+
+        DSFilterInfo[][] info = DSCapture.queryDevices();
+        for (int i = 0; i < info.length; i++) {
+            for (int j = 0; j < info[i].length; j++) {
+                System.out.println("[" + i + "][" + j + "]" + info[i][j]);
+                if(info[i][j].getName().equals("OEM Device")) {
+                    easyCap1 = info[i][j];
+                }
+            }
+        }
+
+        cam1graph = new DSCapture(DSFiltergraph.CAPTURE, easyCap1,
+                false, DSFilterInfo.doNotRender(), null);
+
+
+        cam1graph.setVisible(true);
+        cam1graph.setPreview();
 
         $$$setupUI$$$();
         initViews();
@@ -122,14 +142,17 @@ public class Main extends JFrame {
                 return;
             }
 
-            webSourceOne = new VideoCapture(0);
             webSourceTwo = new VideoCapture(1);
 
-            webSourceOne.read(img1);
+            img1 = cam1graph != null ?
+                    BufferedImage2Mat(cam1graph.getImage()) : new Mat();
 
-            Core.flip(img1, img1, -1);
 
             webSourceTwo.read(img2);
+
+            ImageUtils.draw(panel5, img1);
+
+            ImageUtils.draw(panel3, img2);
 
             Imgproc.initUndistortRectifyMap(CM1, D1, R1, P1, img1.size(), CvType.CV_32FC1, map1x, map1y);
             Imgproc.initUndistortRectifyMap(CM2, D2, R2, P2, img2.size(), CvType.CV_32FC1, map2x, map2y);
@@ -137,10 +160,8 @@ public class Main extends JFrame {
 
             final Runnable depthRunnable = () -> {
                 while (isDepthRun.get()) {
-
-                    webSourceOne.read(img1);
-
-                    Core.flip(img1, img1, -1);
+                    img1 = cam1graph != null ?
+                            BufferedImage2Mat(cam1graph.getImage()) : new Mat();
 
                     webSourceTwo.read(img2);
 
@@ -219,6 +240,15 @@ public class Main extends JFrame {
         });
 
     }
+
+    private static Mat BufferedImage2Mat(BufferedImage bi) {
+        Mat mat = new Mat(bi.getHeight(), bi.getWidth(), CvType.CV_8UC3);
+        byte[] data = ((DataBufferByte) bi.getRaster().getDataBuffer()).getData();
+        mat.put(0, 0, data);
+
+        return mat;
+    }
+
 
     private void undistortAndRemap() {
         Imgproc.remap(img1, imgU1, map1x, map1y, Imgproc.INTER_LINEAR);
@@ -418,9 +448,9 @@ public class Main extends JFrame {
                 EventQueue.invokeLater(() ->
                         main.setVisible(true));
             } finally {
-                if (null != main.webSourceOne && main.webSourceOne.isOpened()) {
-                    main.webSourceOne.release();
-                }
+//                if (null != main.webSourceOne && main.webSourceOne.isOpened()) {
+//                    main.webSourceOne.release();
+//                }
 
                 if (null != main.webSourceTwo && main.webSourceTwo.isOpened()) {
                     main.webSourceTwo.release();
