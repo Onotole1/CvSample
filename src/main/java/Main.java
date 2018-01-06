@@ -2,6 +2,10 @@ import components.*;
 import de.humatic.dsj.DSCapture;
 import de.humatic.dsj.DSFilterInfo;
 import de.humatic.dsj.DSFiltergraph;
+import gnu.io.CommPortIdentifier;
+import gnu.io.SerialPort;
+import gnu.io.SerialPortEvent;
+import gnu.io.SerialPortEventListener;
 import org.opencv.calib3d.StereoBM;
 import org.opencv.calib3d.StereoSGBM;
 import org.opencv.core.Core;
@@ -12,19 +16,25 @@ import org.opencv.imgproc.Imgproc;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowEvent;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
+import java.io.*;
+import java.util.Enumeration;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class Main extends JFrame {
+public class Main extends JFrame implements SerialPortEventListener {
 
     private static final double FOCUS_LENGTH_PX = 113.3858267717d;
     private static final double BASE_LENGTH_PX = 377.9527559055d;
 
-    //    private VideoCapture webSourceTwo;
+    private SerialPort serialPort;
+
+    private static final String PORT_NAMES[] = {
+            "COM4", // Windows
+    };
+    private BufferedReader input;
+    private static final int TIME_OUT = 2000;
+    private static final int DATA_RATE = 9600;
+
     private DSCapture cam1graph;
     private DSCapture cam2graph;
 
@@ -101,8 +111,20 @@ public class Main extends JFrame {
         if (e.getID() == WindowEvent.WINDOW_CLOSING) {
             cam1graph.stop();
             cam2graph.stop();
-        }
 
+            if (serialPort != null) {
+                serialPort.removeEventListener();
+                serialPort.close();
+
+                if (null != input) {
+                    try {
+                        input.close();
+                    } catch (final IOException e1) {
+                        //do nothing
+                    }
+                }
+            }
+        }
 
         super.processWindowEvent(e);
     }
@@ -111,6 +133,7 @@ public class Main extends JFrame {
 
         $$$setupUI$$$();
         initViews();
+        initializeSerial();
         setContentPane(panel1);
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         pack();
@@ -474,6 +497,43 @@ public class Main extends JFrame {
         }
     }
 
+    private void initializeSerial() {
+        CommPortIdentifier portId = null;
+        final Enumeration portEnum = CommPortIdentifier.getPortIdentifiers();
+
+        //First, Find an instance of serial port as set in PORT_NAMES.
+        while (portEnum.hasMoreElements()) {
+            final CommPortIdentifier currPortId = (CommPortIdentifier) portEnum.nextElement();
+            for (final String portName : PORT_NAMES) {
+                if (currPortId.getName().equals(portName)) {
+                    portId = currPortId;
+                    break;
+                }
+            }
+        }
+        if (portId == null) {
+            System.out.println("Could not find COM port.");
+            return;
+        }
+
+        try {
+            serialPort = (SerialPort) portId.open(this.getClass().getName(),
+                    TIME_OUT);
+            serialPort.setSerialPortParams(DATA_RATE,
+                    SerialPort.DATABITS_8,
+                    SerialPort.STOPBITS_1,
+                    SerialPort.PARITY_NONE);
+
+            // open the streams
+            input = new BufferedReader(new InputStreamReader(serialPort.getInputStream()));
+
+            serialPort.addEventListener(this);
+            serialPort.notifyOnDataAvailable(true);
+        } catch (final Exception e) {
+            System.err.println(e.toString());
+        }
+    }
+
     private double getDistancePx(final double disparity) {
         if (disparity == 0) {
             return 0;
@@ -548,5 +608,21 @@ public class Main extends JFrame {
      */
     public JComponent $$$getRootComponent$$$() {
         return panel1;
+    }
+
+    @Override
+    public synchronized void serialEvent(final SerialPortEvent oEvent) {
+        if (oEvent.getEventType() == SerialPortEvent.DATA_AVAILABLE) {
+            try {
+                final String inputLine;
+                if (input.ready()) {
+                    inputLine = input.readLine();
+                    System.out.println(inputLine);
+                }
+
+            } catch (final Exception e) {
+                System.err.println(e.toString());
+            }
+        }
     }
 }
