@@ -8,6 +8,8 @@ import org.opencv.core.Mat;
 import org.opencv.core.MatOfByte;
 import org.opencv.imgcodecs.Imgcodecs;
 
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
@@ -23,7 +25,7 @@ public final class ImageUtils {
     private ImageUtils() {
     }
 
-    public static void draw(final JPanel jPanel, final Mat mat) {
+    public static void draw(@Nonnull final JPanel jPanel, @Nonnull final Mat mat) {
         final MatOfByte mem = new MatOfByte();
 
         Imgcodecs.imencode(".bmp", mat, mem);
@@ -43,7 +45,8 @@ public final class ImageUtils {
         }
     }
 
-    public static String matToJson(final Mat mat) {
+    @Nonnull
+    public static String matToJson(@Nonnull final Mat mat) {
         final JsonObject obj = new JsonObject();
 
         if (mat.isContinuous()) {
@@ -75,7 +78,8 @@ public final class ImageUtils {
 
     }
 
-    public static Mat matFromJson(final String json) {
+    @Nonnull
+    public static Mat matFromJson(@Nonnull final String json) {
         final JsonParser parser = new JsonParser();
         final JsonObject JsonObject = parser.parse(json).getAsJsonObject();
 
@@ -93,9 +97,15 @@ public final class ImageUtils {
 
     }
 
-    public static Mat BufferedImage2Mat(BufferedImage bi) {
-        Mat mat = new Mat(bi.getHeight(), bi.getWidth(), CvType.CV_8UC3);
-        byte[] data = ((DataBufferByte) bi.getRaster().getDataBuffer()).getData();
+    @Nullable
+    public static Mat bufferedImage2Mat(@Nullable final BufferedImage bi) {
+
+        if (bi == null) {
+            return null;
+        }
+
+        final Mat mat = new Mat(bi.getHeight(), bi.getWidth(), CvType.CV_8UC3);
+        final byte[] data = ((DataBufferByte) bi.getRaster().getDataBuffer()).getData();
         mat.put(0, 0, data);
 
         return mat; //mat.submat(new Rect(0, 0, img1.width(), img1.height()));

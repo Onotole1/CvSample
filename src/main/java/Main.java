@@ -1,7 +1,4 @@
-import components.Corner;
-import components.ImageUtils;
-import components.PreferencesProvider;
-import components.Rule;
+import components.*;
 import de.humatic.dsj.DSCapture;
 import de.humatic.dsj.DSFilterInfo;
 import de.humatic.dsj.DSFiltergraph;
@@ -20,13 +17,14 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class Main extends JFrame {
 
     private static final double FOCUS_LENGTH_PX = 113.3858267717d;
     private static final double BASE_LENGTH_PX = 377.9527559055d;
 
-//    private VideoCapture webSourceTwo;
+    //    private VideoCapture webSourceTwo;
     private DSCapture cam1graph;
     private DSCapture cam2graph;
 
@@ -59,14 +57,15 @@ public class Main extends JFrame {
     private JLabel uniquenessRatioLabel;
     private JLabel speckleWindowSizeLabel;
     private JLabel speckleRangeLabel;
-    private JList list1;
+    private JComboBox<String> comboBoxRotation2;
+    private JComboBox<String> comboBoxRotation1;
     private double maxValue = Double.MIN_VALUE;
 
     private Mat img1;
     private Mat img2;
 
-    private final Mat imgU1 = new Mat();
-    private final Mat imgU2 = new Mat();
+    private Mat imgU1 = new Mat();
+    private Mat imgU2 = new Mat();
 
     private final Mat map1x = new Mat();
     private final Mat map1y = new Mat();
@@ -83,12 +82,15 @@ public class Main extends JFrame {
     private Mat CM1 = Mat.eye(3, 3, CvType.CV_64F);
     private Mat CM2 = Mat.eye(3, 3, CvType.CV_64F);
 
+    private final AtomicInteger selectedRotation1 = new AtomicInteger();
+    private final AtomicInteger selectedRotation2 = new AtomicInteger();
+
     private final AtomicBoolean isDepthRun = new AtomicBoolean();
 
-    private PreferencesProvider preferencesProvider = new PreferencesProvider();
+    private final PreferencesProvider preferencesProvider = new PreferencesProvider();
 
     static {
-        String opencvpath = System.getProperty("user.dir") + "\\libs\\";
+        final String opencvpath = System.getProperty("user.dir") + "\\libs\\";
         System.load(opencvpath + Core.NATIVE_LIBRARY_NAME + ".dll");
     }
 
@@ -97,8 +99,6 @@ public class Main extends JFrame {
 
 
         if (e.getID() == WindowEvent.WINDOW_CLOSING) {
-//            webSourceOne.release();
-//            webSourceTwo.release();
             cam1graph.stop();
             cam2graph.stop();
         }
@@ -115,6 +115,30 @@ public class Main extends JFrame {
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         pack();
 
+        comboBoxRotation1.addActionListener(e -> {
+            for (final String key : Constants.ROTATIONS.keySet()) {
+                if (key.equals(comboBoxRotation1.getSelectedItem())) {
+                    selectedRotation1.set(Constants.ROTATIONS.get(key));
+                }
+            }
+        });
+
+        comboBoxRotation2.addActionListener(e -> {
+            for (final String key : Constants.ROTATIONS.keySet()) {
+                if (key.equals(comboBoxRotation2.getSelectedItem())) {
+                    selectedRotation2.set(Constants.ROTATIONS.get(key));
+                }
+            }
+        });
+
+        for (final String key : Constants.ROTATIONS.keySet()) {
+            comboBoxRotation1.addItem(key);
+            comboBoxRotation2.addItem(key);
+        }
+
+        comboBoxRotation1.setSelectedIndex(0);
+        comboBoxRotation2.setSelectedIndex(0);
+
         startDMButton.addActionListener(e -> {
 
 
@@ -123,21 +147,10 @@ public class Main extends JFrame {
                 return;
             }
 
-            DSFilterInfo easyCap1 = null;
-            DSFilterInfo easyCap2 = null;
 
-            DSFilterInfo[][] info = DSCapture.queryDevices();
-            for (int i = 0; i < info.length; i++) {
-                for (int j = 0; j < info[i].length; j++) {
-                    System.out.println("[" + i + "][" + j + "]" + info[i][j]);
-                    if(info[i][j].getName().equals("OEM Device")) {
-                        easyCap1 = info[i][j];
-                    }
-                    if (info[i][j].getName().equals("USB2.0 PC CAMERA")) {
-                        easyCap2 = info[i][j];
-                    }
-                }
-            }
+            final DSFilterInfo[][] info = DSCapture.queryDevices();
+            final DSFilterInfo easyCap1 = info[0][0];
+            final DSFilterInfo easyCap2 = info[0][1];
 
             cam1graph = new DSCapture(DSFiltergraph.CAPTURE, easyCap1,
                     false, DSFilterInfo.doNotRender(), null);
@@ -153,15 +166,11 @@ public class Main extends JFrame {
             cam2graph.setVisible(true);
             cam2graph.setPreview();
 
-//            webSourceTwo = new VideoCapture(0);
-//
-//            webSourceTwo.retrieve(img2);
-
             img1 = cam1graph != null ?
-                    ImageUtils.BufferedImage2Mat(cam1graph.getImage()) : new Mat();
+                    ImageUtils.bufferedImage2Mat(cam1graph.getImage()) : new Mat();
 
             img2 = cam1graph != null ?
-                    ImageUtils.BufferedImage2Mat(cam2graph.getImage()) : new Mat();
+                    ImageUtils.bufferedImage2Mat(cam2graph.getImage()) : new Mat();
 
             Imgproc.initUndistortRectifyMap(CM1, D1, R1, P1, img1.size(), CvType.CV_32FC1, map1x, map1y);
             Imgproc.initUndistortRectifyMap(CM2, D2, R2, P2, img2.size(), CvType.CV_32FC1, map2x, map2y);
@@ -170,17 +179,31 @@ public class Main extends JFrame {
             final Runnable depthRunnable = () -> {
                 while (isDepthRun.get()) {
 
-                   img1 = cam1graph != null ?
-                            ImageUtils.BufferedImage2Mat(cam1graph.getImage()) : new Mat();
-                    img2 = cam1graph != null ?
-                            ImageUtils.BufferedImage2Mat(cam2graph.getImage()) : new Mat();
+                    img1 = ImageUtils.bufferedImage2Mat(cam1graph.getImage());
+
+                    img2 = ImageUtils.bufferedImage2Mat(cam2graph.getImage());
+
+                    assert img1 != null && img2 != null;
+
+                    final int rotation1 = selectedRotation1.get();
+                    if (rotation1 != Constants.NO_ROTATION_VALUE) {
+                        Core.flip(img1, img1, rotation1);
+                    }
+
+                    final int rotation2 = selectedRotation2.get();
+                    if (rotation2 != Constants.NO_ROTATION_VALUE) {
+                        Core.flip(img2, img2, rotation2);
+                    }
 
 
                     Imgproc.cvtColor(img1, img1, Imgproc.COLOR_BGR2GRAY);
 
                     Imgproc.cvtColor(img2, img2, Imgproc.COLOR_BGR2GRAY);
 
-                    undistortAndRemap();
+                    //undistortAndRemap();
+
+                    imgU1 = img1;
+                    imgU2 = img2;
 
                     ImageUtils.draw(panel5, imgU1);
 
@@ -195,17 +218,17 @@ public class Main extends JFrame {
 
                     } else if (comboBox1.getSelectedIndex() == 1) {
 
-                        int windowSize = (Integer) windowSizeSpinner.getValue();
-                        int minDisp = (Integer) minDispSpinner.getValue();
-                        int numDisp = (Integer) numDisparitiesSpinner.getValue();
-                        int blockSize = (Integer) blockSizeSpinner.getValue();
-                        int P1 = (int) Math.pow(8 * 3 * windowSize, 2);
-                        int P2 = (int) Math.pow(32 * 3 * windowSize, 2);
-                        int disp12MaxDiff = (Integer) disp12MaxDiffSpinner.getValue();
-                        int preFilterCap = (Integer) preFilterCapSpinner.getValue();
-                        int uniquenessRatio = (Integer) uniquenessRatioSpinner.getValue();
-                        int speckleWindowSize = (Integer) speckleWindowSizeSpinner.getValue();
-                        int speckleRange = (Integer) speckleRangeSpinner.getValue();
+                        final int windowSize = (Integer) windowSizeSpinner.getValue();
+                        final int minDisp = (Integer) minDispSpinner.getValue();
+                        final int numDisp = (Integer) numDisparitiesSpinner.getValue();
+                        final int blockSize = (Integer) blockSizeSpinner.getValue();
+                        final int P1 = (int) Math.pow(8 * 3 * windowSize, 2);
+                        final int P2 = (int) Math.pow(32 * 3 * windowSize, 2);
+                        final int disp12MaxDiff = (Integer) disp12MaxDiffSpinner.getValue();
+                        final int preFilterCap = (Integer) preFilterCapSpinner.getValue();
+                        final int uniquenessRatio = (Integer) uniquenessRatioSpinner.getValue();
+                        final int speckleWindowSize = (Integer) speckleWindowSizeSpinner.getValue();
+                        final int speckleRange = (Integer) speckleRangeSpinner.getValue();
 
                         final StereoSGBM stereoSGBM = StereoSGBM.create(minDisp, numDisp, blockSize, P1, P2, disp12MaxDiff, preFilterCap, uniquenessRatio, speckleWindowSize, speckleRange, StereoSGBM.MODE_HH);
 
@@ -371,7 +394,7 @@ public class Main extends JFrame {
 
         comboBox1.addActionListener(e -> {
 
-            int selectedIndex = comboBox1.getSelectedIndex();
+            final int selectedIndex = comboBox1.getSelectedIndex();
 
             if (selectedIndex == 0) {
                 windowSizeSpinner.setVisible(false);
@@ -390,7 +413,7 @@ public class Main extends JFrame {
                 windowSizeLabel.setVisible(false);
                 speckleWindowSizeLabel.setVisible(false);
 
-                int preferencesProviderBlockSize = preferencesProvider.getBlockSize();
+                final int preferencesProviderBlockSize = preferencesProvider.getBlockSize();
 
                 if (preferencesProviderBlockSize % 2 == 0 || preferencesProviderBlockSize < 5 || preferencesProviderBlockSize > 255) {
 
@@ -442,17 +465,12 @@ public class Main extends JFrame {
         if (!main.loadCalibration()) {
             final Calib calib = new Calib();
 
-           EventQueue.invokeLater(() ->
+            EventQueue.invokeLater(() ->
                     calib.setVisible(true));
         } else {
 
-            try {
-                EventQueue.invokeLater(() ->
-                        main.setVisible(true));
-            } finally {
-                main.cam1graph.stop();
-                main.cam2graph.stop();
-            }
+            EventQueue.invokeLater(() ->
+                    main.setVisible(true));
         }
     }
 

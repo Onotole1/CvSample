@@ -1,3 +1,4 @@
+import components.Constants;
 import components.ImageUtils;
 import components.MatUtils;
 import de.humatic.dsj.DSCapture;
@@ -12,13 +13,16 @@ import org.opencv.imgproc.Imgproc;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowEvent;
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class Calib extends JFrame {
 
@@ -39,9 +43,14 @@ public class Calib extends JFrame {
     private JButton saveButton;
     private JButton resetButton;
     private JTextArea calibInfo;
-    private JLabel firstCameraLabel;
-    private JLabel secondCameraLabel;
     private JSpinner alphaSpinner;
+    private JComboBox<String> comboBoxRotation2;
+    private JComboBox<String> comboBoxRotation1;
+    private JLabel device2NotSupported;
+    private JLabel device1NotSupported;
+    private JList<String> list1;
+    private JList<String> list2;
+    private final ArrayList<DSFilterInfo> devices = new ArrayList<>();
 
     private Mat img1;
     private Mat img2;
@@ -70,8 +79,11 @@ public class Calib extends JFrame {
     private final Mat CM2 = Mat.eye(3, 3, CvType.CV_64F);
 
 
-    private DSCapture cam1graph;
-    private DSCapture cam2graph;
+    private static DSCapture cam1graph;
+    private static DSCapture cam2graph;
+
+    private final AtomicInteger selectedRotation1 = new AtomicInteger();
+    private final AtomicInteger selectedRotation2 = new AtomicInteger();
 
     private final AtomicBoolean isCalibrationRun = new AtomicBoolean();
     private final AtomicBoolean isDemoRun = new AtomicBoolean();
@@ -79,11 +91,19 @@ public class Calib extends JFrame {
 
     private final Runnable depthRunnable = () -> {
 
-        initEasyCaps();
-
         while (isCalibrationRun.get()) {
 
-            readImages();
+            try {
+                readImages();
+            } catch (RuntimeException e) {
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException e1) {
+                    //do nothing
+                }
+
+                continue;
+            }
 
             Imgproc.cvtColor(img1, gray1, Imgproc.COLOR_BGR2GRAY);
 
@@ -99,15 +119,11 @@ public class Calib extends JFrame {
             if (found1) {
                 Imgproc.cornerSubPix(gray1, corners1, new Size(11, 11), new Size(-1, -1), new TermCriteria(TermCriteria.EPS | TermCriteria.MAX_ITER, 30, 0.001));
                 Calib3d.drawChessboardCorners(gray1, PATTERN_SIZE, corners1, true);
-
-//                Imgproc.resize(corners1, corners1, new Size(corners1.width() / 2, corners1.height() / 2), 0.0, 0.0, Imgproc.INTER_LINEAR);
             }
 
             if (found2) {
                 Imgproc.cornerSubPix(gray2, corners2, new Size(11, 11), new Size(-1, -1), new TermCriteria(TermCriteria.EPS | TermCriteria.MAX_ITER, 30, 0.001));
                 Calib3d.drawChessboardCorners(gray2, PATTERN_SIZE, corners2, true);
-
-                //           Imgproc.resize(corners2, corners2, new Size(corners2.width() / 2, corners2.height() / 2), 0.0, 0.0, Imgproc.INTER_LINEAR);
             }
 
             ImageUtils.draw(panel1, gray1);
@@ -183,6 +199,68 @@ public class Calib extends JFrame {
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         pack();
 
+        final DSFilterInfo[][] info = DSCapture.queryDevices();
+
+        for (final DSFilterInfo[] anInfo : info) {
+            devices.addAll(Arrays.asList(anInfo));
+        }
+
+        final String[] devicesNames = new String[devices.size()];
+        for (int i = 0, devicesSize = devices.size(); i < devicesSize; i++) {
+            devicesNames[i] = devices.get(i).getName();
+        }
+
+        list1.setListData(devicesNames);
+        list2.setListData(devicesNames);
+
+        list1.addListSelectionListener(e -> {
+            if (devices.size() > 0) {
+                initEasyCap(devices.get(list1.getSelectedIndex()), 0);
+            }
+        });
+
+        list2.addListSelectionListener(e -> {
+            if (devices.size() > 0) {
+                initEasyCap(devices.get(list2.getSelectedIndex()), 1);
+            }
+        });
+
+        if (devices.size() > 0) {
+
+            if (devices.size() > 1) {
+                list1.setSelectedIndex(0);
+                list2.setSelectedIndex(1);
+            } else {
+                list1.setSelectedIndex(0);
+                list2.setSelectedIndex(0);
+
+            }
+        }
+
+        comboBoxRotation1.addActionListener(e -> {
+            for (final String key : Constants.ROTATIONS.keySet()) {
+                if (key.equals(comboBoxRotation1.getSelectedItem())) {
+                    selectedRotation1.set(Constants.ROTATIONS.get(key));
+                }
+            }
+        });
+
+        comboBoxRotation2.addActionListener(e -> {
+            for (final String key : Constants.ROTATIONS.keySet()) {
+                if (key.equals(comboBoxRotation2.getSelectedItem())) {
+                    selectedRotation2.set(Constants.ROTATIONS.get(key));
+                }
+            }
+        });
+
+        for (final String key : Constants.ROTATIONS.keySet()) {
+            comboBoxRotation1.addItem(key);
+            comboBoxRotation2.addItem(key);
+        }
+
+        comboBoxRotation1.setSelectedIndex(0);
+        comboBoxRotation2.setSelectedIndex(0);
+
         alphaSpinner.setModel(new SpinnerNumberModel(0d, Integer.MIN_VALUE, Integer.MAX_VALUE, 0.1d));
 
         resetButton.addActionListener(e -> {
@@ -227,8 +305,6 @@ public class Calib extends JFrame {
 
             final Runnable demoRunnable = () -> {
 
-                initEasyCaps();
-
                 final Mat map1x = new Mat();
                 final Mat map1y = new Mat();
                 final Mat map2x = new Mat();
@@ -237,12 +313,22 @@ public class Calib extends JFrame {
                 final Mat imgU2 = new Mat();
 
 
-                Imgproc.initUndistortRectifyMap(CM1, D1, R1, P1, img1.size(), CvType.CV_32FC1, map1x, map1y);
-                Imgproc.initUndistortRectifyMap(CM2, D2, R2, P2, img2.size(), CvType.CV_32FC1, map2x, map2y);
+                Imgproc.initUndistortRectifyMap(CM1, D1, R1, P1, FRAME_SIZE, CvType.CV_32FC1, map1x, map1y);
+                Imgproc.initUndistortRectifyMap(CM2, D2, R2, P2, FRAME_SIZE, CvType.CV_32FC1, map2x, map2y);
 
                 while (isDemoRun.get()) {
 
-                    readImages();
+                    try {
+                        readImages();
+                    } catch (final RuntimeException exception) {
+                        try {
+                            Thread.sleep(2000);
+                        } catch (final InterruptedException exception1) {
+                            //do nothing
+                        }
+
+                        continue;
+                    }
 
                     Imgproc.remap(img1, imgU1, map1x, map1y, Imgproc.INTER_LINEAR);
                     Imgproc.remap(img2, imgU2, map2x, map2y, Imgproc.INTER_LINEAR);
@@ -305,40 +391,29 @@ public class Calib extends JFrame {
         });
     }
 
-    private void initEasyCaps() {
-        DSFilterInfo easyCap1 = null;
-        DSFilterInfo easyCap2 = null;
-
-        final DSFilterInfo[][] info = DSCapture.queryDevices();
-
-        for (int i = 0; i < info.length; i++) {
-            for (int j = 0; j < info[i].length; j++) {
-                System.out.println("[" + i + "][" + j + "]" + info[i][j]);
-                if (info[i][j].getName().equals("OEM Device")) {
-                    easyCap1 = info[i][j];
-                    firstCameraLabel.setText(easyCap1.getName());
-                }
-                if (info[i][j].getName().equals("USB2.0 PC CAMERA")) {
-                    easyCap2 = info[i][j];
-                    secondCameraLabel.setText(easyCap2.getName());
-                }
-            }
-        }
-
+    private void initEasyCap(final DSFilterInfo easyCap, final int number) {
 
         try {
-            cam1graph = new DSCapture(DSFiltergraph.CAPTURE, easyCap1,
-                    false, DSFilterInfo.doNotRender(), null);
 
-            cam1graph.setVisible(true);
-            cam1graph.setPreview();
+            switch (number) {
 
+                case 0:
 
-            cam2graph = new DSCapture(DSFiltergraph.CAPTURE, easyCap2,
-                    false, DSFilterInfo.doNotRender(), null);
+                    cam1graph = new DSCapture(DSFiltergraph.CAPTURE, easyCap,
+                            false, DSFilterInfo.doNotRender(), null);
 
-            cam2graph.setVisible(true);
-            cam2graph.setPreview();
+                    cam1graph.setVisible(true);
+                    cam1graph.setPreview();
+                    break;
+                case 1:
+
+                    cam2graph = new DSCapture(DSFiltergraph.CAPTURE, easyCap,
+                            false, DSFilterInfo.doNotRender(), null);
+
+                    cam2graph.setVisible(true);
+                    cam2graph.setPreview();
+                    break;
+            }
         } catch (final DSJException e) {
             //do nothing
         }
@@ -350,14 +425,39 @@ public class Calib extends JFrame {
         cam2graph.stop();
     }
 
-    private void readImages() {
+    private void readImages() throws RuntimeException {
 
-        img1 = cam1graph != null ?
-                ImageUtils.BufferedImage2Mat(cam1graph.getImage()) : null;
-        img2 = cam2graph != null ?
-                ImageUtils.BufferedImage2Mat(cam2graph.getImage()) : null;
+        final BufferedImage cam1graphImage;
+        try {
+            cam1graphImage = cam1graph.getImage();
+            img1 = ImageUtils.bufferedImage2Mat(cam1graphImage);
+        } catch (final NullPointerException e) {
+            device1NotSupported.setVisible(true);
+        }
 
-        assert img1 != null && img2 != null;
+        final BufferedImage cam2graphImage;
+        try {
+            cam2graphImage = cam2graph.getImage();
+            img2 = ImageUtils.bufferedImage2Mat(cam2graphImage);
+        } catch (final NullPointerException e) {
+            device2NotSupported.setVisible(true);
+        }
+
+        if (img1 == null || img2 == null) {
+            device1NotSupported.setVisible(img1 == null);
+            device2NotSupported.setVisible(img2 == null);
+            throw new RuntimeException();
+        }
+
+        final int rotation1 = selectedRotation1.get();
+        if (rotation1 != Constants.NO_ROTATION_VALUE) {
+            Core.flip(img1, img1, rotation1);
+        }
+
+        final int rotation2 = selectedRotation2.get();
+        if (rotation2 != Constants.NO_ROTATION_VALUE) {
+            Core.flip(img2, img2, rotation2);
+        }
 
         if (!img1.size().equals(FRAME_SIZE)) {
             img1 = img1.submat(new Rect(new Point(0, 0), FRAME_SIZE));

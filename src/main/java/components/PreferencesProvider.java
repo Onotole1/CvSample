@@ -25,41 +25,41 @@ public final class PreferencesProvider {
     private static final int SPECKLE_RANGE_DEFAULT = 32;
     private static final int PRE_FILTERED_DEFAULT = 0;
 
-    private Preferences preferences = Preferences.userRoot().node(PreferencesProvider.class.getCanonicalName());
+    private final Preferences preferences = Preferences.userRoot().node(PreferencesProvider.class.getCanonicalName());
 
-    public void savePreFiltered(int preFiltered) {
+    public void savePreFiltered(final int preFiltered) {
         preferences.putInt(PRE_FILTERED_KEY, preFiltered);
     }
 
-    public void saveNumDisparities(int numDisparities) {
+    public void saveNumDisparities(final int numDisparities) {
         preferences.putInt(NUM_DISPARITIES_KEY, numDisparities);
     }
 
-    public void saveBlockSize(int blockSize) {
+    public void saveBlockSize(final int blockSize) {
         preferences.putInt(BLOCK_SIZE_KEY, blockSize);
     }
 
-    public void saveWindowSize(int windowSize) {
+    public void saveWindowSize(final int windowSize) {
         preferences.putInt(WINDOW_SIZE_KEY, windowSize);
     }
 
-    public void saveMinDisparities(int minDisparities) {
+    public void saveMinDisparities(final int minDisparities) {
         preferences.putInt(MIN_DISPARITIES_KEY, minDisparities);
     }
 
-    public void saveDisp12MaxDisp(int disp12MaxDisp) {
+    public void saveDisp12MaxDisp(final int disp12MaxDisp) {
         preferences.putInt(DISP_12_MAX_DISP_KEY, disp12MaxDisp);
     }
 
-    public void saveUniquenessRatio(int uniquenessRatio) {
+    public void saveUniquenessRatio(final int uniquenessRatio) {
         preferences.putInt(UNIQUENESS_RATIO_KEY, uniquenessRatio);
     }
 
-    public void saveSpeckleWindowSize(int speckleWindowSize) {
+    public void saveSpeckleWindowSize(final int speckleWindowSize) {
         preferences.putInt(SPECKLE_WINDOW_SIZE_KEY, speckleWindowSize);
     }
 
-    public void saveSpeckleRange(int speckleRange) {
+    public void saveSpeckleRange(final int speckleRange) {
         preferences.putInt(SPECKLE_RANGE_KEY, speckleRange);
     }
 
