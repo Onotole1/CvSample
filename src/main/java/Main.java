@@ -9,14 +9,17 @@ import gnu.io.SerialPortEventListener;
 import org.opencv.calib3d.StereoBM;
 import org.opencv.calib3d.StereoSGBM;
 import org.opencv.core.Core;
-import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.imgproc.Imgproc;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowEvent;
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.util.Date;
 import java.util.Enumeration;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -39,7 +42,6 @@ public class Main extends JFrame implements SerialPortEventListener {
     private DSCapture cam2graph;
 
     private JPanel panel1;
-    private JButton startDMButton;
     private JScrollBar scrollBar1;
     private JLabel labelY;
     private JScrollPane scrollPane1;
@@ -47,8 +49,6 @@ public class Main extends JFrame implements SerialPortEventListener {
     private JPanel panel2;
     private JScrollBar scrollBar2;
     private JScrollBar scrollBar3;
-    private JPanel panel3;
-    private JPanel panel5;
     private JComboBox comboBox1;
     private JSpinner numDisparitiesSpinner;
     private JSpinner blockSizeSpinner;
@@ -67,30 +67,12 @@ public class Main extends JFrame implements SerialPortEventListener {
     private JLabel uniquenessRatioLabel;
     private JLabel speckleWindowSizeLabel;
     private JLabel speckleRangeLabel;
-    private JComboBox<String> comboBoxRotation2;
-    private JComboBox<String> comboBoxRotation1;
+    private JScrollBar scrollBar4;
+    private JScrollBar scrollBar5;
     private double maxValue = Double.MIN_VALUE;
 
-    private Mat img1;
-    private Mat img2;
-
-    private Mat imgU1 = new Mat();
-    private Mat imgU2 = new Mat();
-
-    private final Mat map1x = new Mat();
-    private final Mat map1y = new Mat();
-    private final Mat map2x = new Mat();
-    private final Mat map2y = new Mat();
-
-    private Mat D1 = new Mat();
-    private Mat D2 = new Mat();
-    private Mat R1 = new Mat();
-    private Mat R2 = new Mat();
-    private Mat P1 = new Mat();
-    private Mat P2 = new Mat();
-
-    private Mat CM1 = Mat.eye(3, 3, CvType.CV_64F);
-    private Mat CM2 = Mat.eye(3, 3, CvType.CV_64F);
+    private Mat img1 = new Mat();
+    private Mat img2 = new Mat();
 
     private final AtomicInteger selectedRotation1 = new AtomicInteger();
     private final AtomicInteger selectedRotation2 = new AtomicInteger();
@@ -138,42 +120,28 @@ public class Main extends JFrame implements SerialPortEventListener {
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         pack();
 
-        comboBoxRotation1.addActionListener(e -> {
-            for (final String key : Constants.ROTATIONS.keySet()) {
-                if (key.equals(comboBoxRotation1.getSelectedItem())) {
-                    selectedRotation1.set(Constants.ROTATIONS.get(key));
-                }
-            }
-        });
 
-        comboBoxRotation2.addActionListener(e -> {
-            for (final String key : Constants.ROTATIONS.keySet()) {
-                if (key.equals(comboBoxRotation2.getSelectedItem())) {
-                    selectedRotation2.set(Constants.ROTATIONS.get(key));
-                }
-            }
-        });
-
-        for (final String key : Constants.ROTATIONS.keySet()) {
-            comboBoxRotation1.addItem(key);
-            comboBoxRotation2.addItem(key);
+        if (isDepthRun.get()) {
+            isDepthRun.set(false);
+            return;
         }
 
-        comboBoxRotation1.setSelectedIndex(0);
-        comboBoxRotation2.setSelectedIndex(0);
 
-        startDMButton.addActionListener(e -> {
-
-
-            if (isDepthRun.get()) {
-                isDepthRun.set(false);
-                return;
-            }
-
+        final Runnable depthRunnable = () -> {
 
             final DSFilterInfo[][] info = DSCapture.queryDevices();
-            final DSFilterInfo easyCap1 = info[0][0];
-            final DSFilterInfo easyCap2 = info[0][1];
+            DSFilterInfo easyCap1 = null;
+            DSFilterInfo easyCap2 = null;
+
+            for (DSFilterInfo[] anInfo : info) {
+                for (DSFilterInfo device : anInfo) {
+                    if (device.getName().equals("Stereo Vision 1")) {
+                        easyCap1 = device;
+                    } else if (device.getName().equals("Stereo Vision 2")) {
+                        easyCap2 = device;
+                    }
+                }
+            }
 
             cam1graph = new DSCapture(DSFiltergraph.CAPTURE, easyCap1,
                     false, DSFilterInfo.doNotRender(), null);
@@ -189,152 +157,108 @@ public class Main extends JFrame implements SerialPortEventListener {
             cam2graph.setVisible(true);
             cam2graph.setPreview();
 
-            img1 = cam1graph != null ?
-                    ImageUtils.bufferedImage2Mat(cam1graph.getImage()) : new Mat();
+            while (isDepthRun.get()) {
 
-            img2 = cam1graph != null ?
-                    ImageUtils.bufferedImage2Mat(cam2graph.getImage()) : new Mat();
+                img1 = ImageUtils.bufferedImage2Mat(cam1graph.getImage());
+                img2 = ImageUtils.bufferedImage2Mat(cam2graph.getImage());
 
-            Imgproc.initUndistortRectifyMap(CM1, D1, R1, P1, img1.size(), CvType.CV_32FC1, map1x, map1y);
-            Imgproc.initUndistortRectifyMap(CM2, D2, R2, P2, img2.size(), CvType.CV_32FC1, map2x, map2y);
+                assert img1 != null && img2 != null;
 
-
-            final Runnable depthRunnable = () -> {
-                while (isDepthRun.get()) {
-
-                    img1 = ImageUtils.bufferedImage2Mat(cam1graph.getImage());
-
-                    img2 = ImageUtils.bufferedImage2Mat(cam2graph.getImage());
-
-                    assert img1 != null && img2 != null;
-
-                    final int rotation1 = selectedRotation1.get();
-                    if (rotation1 != Constants.NO_ROTATION_VALUE) {
-                        Core.flip(img1, img1, rotation1);
-                    }
-
-                    final int rotation2 = selectedRotation2.get();
-                    if (rotation2 != Constants.NO_ROTATION_VALUE) {
-                        Core.flip(img2, img2, rotation2);
-                    }
-
-
-                    Imgproc.cvtColor(img1, img1, Imgproc.COLOR_BGR2GRAY);
-
-                    Imgproc.cvtColor(img2, img2, Imgproc.COLOR_BGR2GRAY);
-
-                    //undistortAndRemap();
-
-                    imgU1 = img1;
-                    imgU2 = img2;
-
-                    ImageUtils.draw(panel5, imgU1);
-
-                    ImageUtils.draw(panel3, imgU2);
-
-                    final Mat disparity = new Mat();
-
-                    if (comboBox1.getSelectedIndex() == 0) {
-                        final StereoBM stereoSGBM = StereoBM.create((Integer) numDisparitiesSpinner.getValue(), (Integer) blockSizeSpinner.getValue());
-
-                        stereoSGBM.compute(imgU1, imgU2, disparity);
-
-                    } else if (comboBox1.getSelectedIndex() == 1) {
-
-                        final int windowSize = (Integer) windowSizeSpinner.getValue();
-                        final int minDisp = (Integer) minDispSpinner.getValue();
-                        final int numDisp = (Integer) numDisparitiesSpinner.getValue();
-                        final int blockSize = (Integer) blockSizeSpinner.getValue();
-                        final int P1 = (int) Math.pow(8 * 3 * windowSize, 2);
-                        final int P2 = (int) Math.pow(32 * 3 * windowSize, 2);
-                        final int disp12MaxDiff = (Integer) disp12MaxDiffSpinner.getValue();
-                        final int preFilterCap = (Integer) preFilterCapSpinner.getValue();
-                        final int uniquenessRatio = (Integer) uniquenessRatioSpinner.getValue();
-                        final int speckleWindowSize = (Integer) speckleWindowSizeSpinner.getValue();
-                        final int speckleRange = (Integer) speckleRangeSpinner.getValue();
-
-                        final StereoSGBM stereoSGBM = StereoSGBM.create(minDisp, numDisp, blockSize, P1, P2, disp12MaxDiff, preFilterCap, uniquenessRatio, speckleWindowSize, speckleRange, StereoSGBM.MODE_HH);
-
-                        stereoSGBM.compute(imgU1, imgU2, disparity);
-                    }
-
-                    final Mat normalized = new Mat();
-
-                    Core.normalize(disparity, normalized, 0, 255, Core.NORM_MINMAX);
-
-                    final double[][][] distances = new double[normalized.rows()][normalized.cols()][1];
-
-                    for (int i = 0, width = normalized.cols(); i < width; i++) {
-                        for (int j = 0, height = normalized.rows(); j < height; j++) {
-
-                            final double distancePx = getDistancePx(normalized.get(j, i)[0]);
-
-                            maxValue = distancePx > maxValue ? maxValue = distancePx : maxValue;
-
-                            distances[j][i][0] = distancePx;
-                        }
-                    }
-
-                    final int index = (int) ((float) normalized.rows() / 100f * (float) scrollBar1.getValue());
-
-                    labelY.setText("Slice index " + index);
-
-                    drawDistances(panel2, distances[index]);
-
-                    ImageUtils.draw(panel4, normalized);
-
+                final int rotation1 = selectedRotation1.get();
+                if (rotation1 != Constants.NO_ROTATION_VALUE) {
+                    Core.flip(img1, img1, rotation1);
                 }
-            };
 
-            if (!isDepthRun.get()) {
+                final int rotation2 = selectedRotation2.get();
+                if (rotation2 != Constants.NO_ROTATION_VALUE) {
+                    Core.flip(img2, img2, rotation2);
+                }
 
-                isDepthRun.set(true);
 
-                new Thread(depthRunnable).start();
+                Imgproc.cvtColor(img1, img1, Imgproc.COLOR_BGR2GRAY);
 
+                Imgproc.cvtColor(img2, img2, Imgproc.COLOR_BGR2GRAY);
+
+                final Mat disparity = new Mat();
+
+                if (comboBox1.getSelectedIndex() == 0) {
+                    final StereoBM stereoSGBM = StereoBM.create((Integer) numDisparitiesSpinner.getValue(), (Integer) blockSizeSpinner.getValue());
+
+                    stereoSGBM.compute(img1, img2, disparity);
+
+                } else if (comboBox1.getSelectedIndex() == 1) {
+
+                    final int windowSize = (Integer) windowSizeSpinner.getValue();
+                    final int minDisp = (Integer) minDispSpinner.getValue();
+                    final int numDisp = (Integer) numDisparitiesSpinner.getValue();
+                    final int blockSize = (Integer) blockSizeSpinner.getValue();
+                    final int P1 = (int) Math.pow(8 * 3 * windowSize, 2);
+                    final int P2 = (int) Math.pow(32 * 3 * windowSize, 2);
+                    final int disp12MaxDiff = (Integer) disp12MaxDiffSpinner.getValue();
+                    final int preFilterCap = (Integer) preFilterCapSpinner.getValue();
+                    final int uniquenessRatio = (Integer) uniquenessRatioSpinner.getValue();
+                    final int speckleWindowSize = (Integer) speckleWindowSizeSpinner.getValue();
+                    final int speckleRange = (Integer) speckleRangeSpinner.getValue();
+
+                    final StereoSGBM stereoSGBM = StereoSGBM.create(minDisp, numDisp, blockSize, P1, P2, disp12MaxDiff, preFilterCap, uniquenessRatio, speckleWindowSize, speckleRange, StereoSGBM.MODE_HH);
+
+                    stereoSGBM.compute(img1, img2, disparity);
+                }
+
+                File file = new File("./pictures");
+
+                if (!file.exists()) {
+                    boolean newFile = file.mkdir();
+                    System.out.println("New File Created : " + newFile);
+                }
+
+                String name = "image_" + new Date().getTime() + ".jpg";
+
+                try {
+                    ImageUtils.saveImage(new File(file, name), disparity);
+                } catch (IOException e) {
+                    //do nothing
+                }
+
+                final Mat normalized = new Mat();
+
+                Core.normalize(disparity, normalized, 0, 255, Core.NORM_MINMAX);
+
+                final double[][][] distances = new double[normalized.rows()][normalized.cols()][1];
+
+                for (int i = 0, width = normalized.cols(); i < width; i++) {
+                    for (int j = 0, height = normalized.rows(); j < height; j++) {
+
+                        final double distancePx = getDistancePx(normalized.get(j, i)[0]);
+
+                        maxValue = distancePx > maxValue ? maxValue = distancePx : maxValue;
+
+                        distances[j][i][0] = distancePx;
+                    }
+                }
+
+                final int index = (int) ((float) normalized.rows() / 100f * (float) scrollBar1.getValue());
+
+                labelY.setText("Slice index " + index);
+
+                drawDistances(panel2, distances[index]);
+
+                ImageUtils.draw(panel4, normalized);
             }
+        };
 
-        });
+        if (!isDepthRun.get()) {
 
-    }
+            isDepthRun.set(true);
 
-    private void undistortAndRemap() {
-        Imgproc.remap(img1, imgU1, map1x, map1y, Imgproc.INTER_LINEAR);
-        Imgproc.remap(img2, imgU2, map2x, map2y, Imgproc.INTER_LINEAR);
-    }
+            new Thread(depthRunnable).start();
 
-    private boolean loadCalibration() {
-
-        final File file = new File("./calibdata");
-
-        if (!file.exists()) {
-            return false;
         }
-        try (final ObjectInputStream objectInputStream = new ObjectInputStream(new FileInputStream(file))) {
-            try {
-                CM1 = ImageUtils.matFromJson((String) objectInputStream.readObject());
-                CM2 = ImageUtils.matFromJson((String) objectInputStream.readObject());
-                D1 = ImageUtils.matFromJson((String) objectInputStream.readObject());
-                D2 = ImageUtils.matFromJson((String) objectInputStream.readObject());
-                R1 = ImageUtils.matFromJson((String) objectInputStream.readObject());
-                R2 = ImageUtils.matFromJson((String) objectInputStream.readObject());
-                P1 = ImageUtils.matFromJson((String) objectInputStream.readObject());
-                P2 = ImageUtils.matFromJson((String) objectInputStream.readObject());
-            } catch (final IOException | ClassNotFoundException e) {
-                return false;
-            }
 
-            return true;
-        } catch (final IOException e) {
-            return false;
-        }
     }
 
     private void createUIComponents() {
-        panel4 = new JPanel();
         panel2 = new JPanel();
-        panel3 = new JPanel();
-        panel5 = new JPanel();
         comboBox1 = new JComboBox();
 
         final Rule columnView = new Rule(Rule.HORIZONTAL, true);
@@ -485,16 +409,8 @@ public class Main extends JFrame implements SerialPortEventListener {
 
         final Main main = new Main();
 
-        if (!main.loadCalibration()) {
-            final Calib calib = new Calib();
-
-            EventQueue.invokeLater(() ->
-                    calib.setVisible(true));
-        } else {
-
-            EventQueue.invokeLater(() ->
-                    main.setVisible(true));
-        }
+        EventQueue.invokeLater(() ->
+                main.setVisible(true));
     }
 
     private void initializeSerial() {
@@ -575,9 +491,6 @@ public class Main extends JFrame implements SerialPortEventListener {
         panel1 = new JPanel();
         panel1.setLayout(new com.intellij.uiDesigner.core.GridLayoutManager(3, 4, new Insets(0, 0, 0, 0), -1, -1));
         panel1.add(panel4, new com.intellij.uiDesigner.core.GridConstraints(0, 0, 1, 1, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_CENTER, com.intellij.uiDesigner.core.GridConstraints.FILL_BOTH, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_FIXED, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_FIXED, new Dimension(384, 288), new Dimension(384, 288), new Dimension(384, 288), 0, false));
-        startDMButton = new JButton();
-        startDMButton.setText("Start DM");
-        panel1.add(startDMButton, new com.intellij.uiDesigner.core.GridConstraints(2, 0, 1, 1, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_CENTER, com.intellij.uiDesigner.core.GridConstraints.FILL_HORIZONTAL, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_GROW, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
         scrollBar1 = new JScrollBar();
         scrollBar1.setMaximum(109);
         scrollBar1.setOrientation(1);

@@ -7,6 +7,7 @@ import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfByte;
 import org.opencv.imgcodecs.Imgcodecs;
+import org.opencv.imgproc.Imgproc;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -16,6 +17,7 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
@@ -41,6 +43,14 @@ public final class ImageUtils {
         final Graphics g = jPanel.getGraphics();
 
         if (buff != null) {
+
+            Dimension dimension = new Dimension(mat.width(), mat.height());
+
+            if (!jPanel.getSize().equals(dimension)) {
+                jPanel.setPreferredSize(dimension);
+                jPanel.revalidate();
+            }
+
             g.drawImage(buff, 0, 0, null);
         }
     }
@@ -76,6 +86,20 @@ public final class ImageUtils {
         }
         return "{}";
 
+    }
+
+    public static void saveImage(@Nonnull File file, @Nonnull Mat mat) throws IOException {
+
+        Mat result = mat.clone();
+
+        Imgproc.cvtColor(result, result, Imgproc.COLOR_RGB2GRAY, 0);
+
+        BufferedImage gray = new BufferedImage(mat.width(), mat.height(), BufferedImage.TYPE_BYTE_GRAY);
+
+        byte[] data = ((DataBufferByte) gray.getRaster().getDataBuffer()).getData();
+        mat.get(0, 0, data);
+
+        ImageIO.write(gray, "jpg", file);
     }
 
     @Nonnull
