@@ -1,4 +1,5 @@
 import components.*;
+import components.interpolation.SplineInterpolator;
 import de.humatic.dsj.DSCapture;
 import de.humatic.dsj.DSFilterInfo;
 import de.humatic.dsj.DSFiltergraph;
@@ -19,8 +20,8 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.Date;
-import java.util.Enumeration;
+import java.util.*;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -205,26 +206,11 @@ public class Main extends JFrame implements SerialPortEventListener {
                     stereoSGBM.compute(img1, img2, disparity);
                 }
 
-                File file = new File("./pictures");
-
-                if (!file.exists()) {
-                    boolean newFile = file.mkdir();
-                    System.out.println("New File Created : " + newFile);
-                }
-
-                String name = "image_" + new Date().getTime() + ".jpg";
-
-                try {
-                    ImageUtils.saveImage(new File(file, name), disparity);
-                } catch (IOException e) {
-                    //do nothing
-                }
-
                 final Mat normalized = new Mat();
 
                 Core.normalize(disparity, normalized, 0, 255, Core.NORM_MINMAX);
 
-                final double[][][] distances = new double[normalized.rows()][normalized.cols()][1];
+                final double[][] distances = new double[normalized.rows()][normalized.cols()];
 
                 for (int i = 0, width = normalized.cols(); i < width; i++) {
                     for (int j = 0, height = normalized.rows(); j < height; j++) {
@@ -233,7 +219,7 @@ public class Main extends JFrame implements SerialPortEventListener {
 
                         maxValue = distancePx > maxValue ? maxValue = distancePx : maxValue;
 
-                        distances[j][i][0] = distancePx;
+                        distances[j][i] = distancePx;
                     }
                 }
 
@@ -243,7 +229,17 @@ public class Main extends JFrame implements SerialPortEventListener {
 
                 drawDistances(panel2, distances[index]);
 
+                drawLines(panel2, 37);
+
                 ImageUtils.draw(panel4, normalized);
+
+
+
+                try {
+                    ImageUtils.saveImage(disparity, panel4);
+                } catch (IOException e) {
+                    //do nothing
+                }
             }
         };
 
@@ -256,6 +252,27 @@ public class Main extends JFrame implements SerialPortEventListener {
         }
 
     }
+
+    private void drawLines(JPanel panel, int cellWidth) {
+
+        //y
+        int counter = 0;
+        for(int y = panel.getHeight(); y > 0; y -= cellWidth  ) {
+            panel.getGraphics().drawLine(0, y, 10, y);
+            panel.getGraphics().drawString(new Integer(counter++).toString(), 15, y);
+        }
+
+        //x
+        counter = 0;
+
+        for(int x = 0; x < panel.getWidth(); x += cellWidth  ) {
+            panel.getGraphics().drawLine(x, panel.getHeight(), x, panel.getHeight()-10);
+            panel.getGraphics().drawString(new Integer(counter++).toString(), x, panel.getHeight()-15);
+        }
+
+    }
+
+
 
     private void createUIComponents() {
         panel2 = new JPanel();
@@ -271,8 +288,8 @@ public class Main extends JFrame implements SerialPortEventListener {
 
         scrollPane1 = new JScrollPane();
 
-        scrollPane1.setColumnHeaderView(columnView);
-        scrollPane1.setRowHeaderView(rowView);
+//        scrollPane1.setColumnHeaderView(columnView);
+//        scrollPane1.setRowHeaderView(rowView);
 
         //Create the corners.
         final JPanel buttonCorner = new JPanel(); //use FlowLayout
@@ -282,12 +299,12 @@ public class Main extends JFrame implements SerialPortEventListener {
         isMetric.addItemListener(e -> System.out.println("Corner button"));
         buttonCorner.add(isMetric);
 
-        scrollPane1.setCorner(JScrollPane.UPPER_LEFT_CORNER,
-                buttonCorner);
-        scrollPane1.setCorner(JScrollPane.LOWER_LEFT_CORNER,
-                new Corner());
-        scrollPane1.setCorner(JScrollPane.UPPER_RIGHT_CORNER,
-                new Corner());
+//        scrollPane1.setCorner(JScrollPane.LOWER_LEFT_CORNER,
+//                buttonCorner);
+//        scrollPane1.setCorner(JScrollPane.LOWER_RIGHT_CORNER,
+//                new Corner());
+//        scrollPane1.setCorner(JScrollPane.UPPER_LEFT_CORNER,
+//                new Corner());
     }
 
     private void initViews() {
@@ -313,6 +330,7 @@ public class Main extends JFrame implements SerialPortEventListener {
         preFilterCapSpinner.setModel(new SpinnerNumberModel(preferencesProvider.getPreFiltered(), 0, Integer.MAX_VALUE, 1));
         preFilterCapSpinner.addChangeListener(e -> preferencesProvider.savePreFiltered((Integer) preFilterCapSpinner.getValue()));
 
+        preferencesProvider.setDefaults();
         disp12MaxDiffSpinner.setModel(new SpinnerNumberModel(preferencesProvider.getDisp12MaxDisp(), 1, Integer.MAX_VALUE, 1));
         disp12MaxDiffSpinner.addChangeListener(e -> preferencesProvider.saveDisp12MaxDisp((Integer) disp12MaxDiffSpinner.getValue()));
 
@@ -458,7 +476,19 @@ public class Main extends JFrame implements SerialPortEventListener {
         return FOCUS_LENGTH_PX * BASE_LENGTH_PX / disparity;
     }
 
-    private void drawDistances(final JPanel jPanel, final double[][] mat) {
+    private void drawDistances(final JPanel jPanel, final double[] mat) {
+
+        List<Float> x = new ArrayList<>();
+        List<Float> y = new ArrayList<>();
+        for (int j = 0, cols = mat.length; j < cols; j++) {
+            final double original = mat[j];
+
+            final float point = (float) original;
+            x.add((float) j);
+            y.add(point);
+        }
+
+        SplineInterpolator interpolator = SplineInterpolator.createMonotoneCubicSpline(x, y);
 
         jPanel.removeAll();
 
@@ -468,9 +498,13 @@ public class Main extends JFrame implements SerialPortEventListener {
 
         for (int j = 0, cols = mat.length; j < cols; j++) {
 
-            final double original = mat[j][0];
+            final double original = mat[j];
 
-            final int point = (int) original;
+            int point = (int) original;
+
+            jPanel.getGraphics().drawLine(j, point, j, point);
+
+            point = (int) interpolator.interpolate(j);
 
             jPanel.getGraphics().drawLine(j, point, j, point);
         }

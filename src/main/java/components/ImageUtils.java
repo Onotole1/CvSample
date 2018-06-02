@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
 import java.util.Base64;
+import java.util.Date;
 
 public final class ImageUtils {
     private ImageUtils() {
@@ -88,18 +89,47 @@ public final class ImageUtils {
 
     }
 
-    public static void saveImage(@Nonnull File file, @Nonnull Mat mat) throws IOException {
+    public static void saveImage(@Nonnull Mat disparity, @Nonnull JPanel jPanel) throws IOException {
 
-        Mat result = mat.clone();
+        final MatOfByte mem = new MatOfByte();
 
-        Imgproc.cvtColor(result, result, Imgproc.COLOR_RGB2GRAY, 0);
+        Imgcodecs.imencode(".bmp", disparity, mem);
 
-        BufferedImage gray = new BufferedImage(mat.width(), mat.height(), BufferedImage.TYPE_BYTE_GRAY);
+        Image im = null;
+        try {
+            im = ImageIO.read(new ByteArrayInputStream(mem.toArray()));
+        } catch (final IOException e1) {
+            e1.printStackTrace();
+        }
+        final BufferedImage buff = (BufferedImage) im;
 
-        byte[] data = ((DataBufferByte) gray.getRaster().getDataBuffer()).getData();
-        mat.get(0, 0, data);
+        final Graphics g = jPanel.getGraphics();
 
-        ImageIO.write(gray, "jpg", file);
+        if (buff != null) {
+
+            Dimension dimension = new Dimension(disparity.width(), disparity.height());
+
+            if (!jPanel.getSize().equals(dimension)) {
+                jPanel.setPreferredSize(dimension);
+                jPanel.revalidate();
+            }
+
+            File file = new File("./results");
+
+            if (!file.exists()) {
+                boolean newFile = file.mkdir();
+                System.out.println("New File Created : " + newFile);
+            }
+
+            File dir = new File(file, String.valueOf(new Date().getTime()));
+
+            if (!dir.exists()) {
+                boolean newFile = dir.mkdir();
+                System.out.println("New File Created : " + newFile);
+            }
+
+            g.drawImage(buff, 0, 0, null);
+        }
     }
 
     @Nonnull
